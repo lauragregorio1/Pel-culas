@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Películas Lau</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="https://kit.fontawesome.com/e17ef94fe8.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@10.16.6/dist/sweetalert2.all.min.js"></script>
+</head>
+
+<body>
+    <div id="header">
+        <h1>PELÍCULAS <i class="fa-solid fa-forward fa-sm" style="color: #ffffff;"></i></h1>
+
+        <button id="descargarBtn">
+            <i id="noHover" class="fa-regular fa-file-pdf fa-2xl" style="color: #ffffff;"></i>
+            <i id="siHover" class="fa-solid fa-download fa-2xl" style="color: #ffffff;"></i>
+        </button>
+
+    </div>
+    <div id="login">
+    </div>
+    <div id="contenido">
+        <div id="buscarPeliculas"></div>
+        <div id="miSeleccion">
+        </div>
+
+    </div>
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-app.js";
+        // TODO: Add SDKs for Firebase products that you want to use
+        // https://firebase.google.com/docs/web/setup#available-libraries
+
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-firestore.js";
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAIzTlJOaBz12hX_W0JEcU0vjg3iU2EtRY",
+            authDomain: "peliculas-eae89.firebaseapp.com",
+            projectId: "peliculas-eae89",
+            storageBucket: "peliculas-eae89.appspot.com",
+            messagingSenderId: "69467259786",
+            appId: "1:69467259786:web:2ee15d62f44457c9377e73"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const refUsuarios = collection(db, "Usuarios");
+        export { doc };
+
+        async function ponValor(docRef, contenido) {
+            await setDoc(docRef, contenido);
+        }
+        async function actualizarValor(docRef, contenido) {
+            await setDoc(docRef, contenido);
+        }
+        window.ponValor = ponValor;
+        window.actualizarValor = actualizarValor;
+        window.doc = doc;
+        window.db = db;
+        window.refUsuarios = refUsuarios;
+        window.getDoc = getDoc;
+
+
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script>
+
+        var usuarios = [];
+        var ultimoUsuario;
+        var favoritos = [];
+        var vistos = [];
+        var key = "0e62aae359ecc3376a03968622c3cc6c";
+        var url = "https://api.themoviedb.org/3/search/movie";
+        let paginaActual = 1;
+        let totalPaginas = 0;
+        let totalResults;
+        let query;
+        let userName;
+
+        window.addEventListener('load', function () {
+            // Aquí va la función que quieres ejecutar al cargar la página, en este caso quiero recoger de FireStore la lista
+            // de favoritos del último usuario
+            recogerUsuariosFb(ultimoUsuario);
+        });
+        //He utilizado localStorage para tener localizado al último usuario de forma más fácil
+        if (localStorage.getItem("usuarios")) {
+            usuarios = JSON.parse(localStorage.getItem("usuarios"));
+        }
+        // Las peículas vistas también las he almacenado en un array en localStorage
+        if (localStorage.getItem(`vistos-${userName}`)) {
+            vistos = JSON.parse(localStorage.getItem(`vistos-${userName}`));
+        }
+        // Se comprueba si hay algun usuario en el array, y en tal caso el html cambia y no es el del login, 
+        // además se saluda a ese usuario (el último que hizo login)
+        if (usuarios.length == 0) {
+            document.getElementById("login").innerHTML = `<h3 id="tituloLogin">LOGIN</h3>
+        <label>Usuario</label>
+        <input type="text" name="" id="inputNombre" placeholder="Nombre de usuario">
+        <br><br>
+        <label>Password</label>
+        <input type="text" id="" placeholder="No la validaremos">
+        <br>
+        <button id="botonLogin" onclick="guardarUsuario()">LOGIN</button>`;
+        } else {
+            ultimoUsuario = usuarios[usuarios.length - 1];
+            document.getElementById("login").innerHTML = `<br><label id="saludo">¡Hola ${ultimoUsuario}!  </label><i class="fa-solid fa-face-smile-beam" style="color: #000000;"></i><br><button id="cambiarUser" onclick="cambiarUsuario()">Cambiar usuario</button>`;
+            document.getElementById("buscarPeliculas").innerHTML = `<div id="buscador"> <input type="text" id="inputPeli" placeholder="Buscar película..."><button id="botonBuscar" onclick="info(${paginaActual})">Buscar</button></div> <div id="botonesPags"></div>`;
+            document.getElementById("miSeleccion").innerHTML = `<h3 id="tituloSeleccion">MIS FAVORITOS</h3>`;
+
+        }
+
+        // Esta función recibe como parámetro el nombre del último usuario que inició sesión, hacemos una referencia a la colección
+        // 'Usuarios' de firestore y la recogemos en docSnap. Creamos un objeto javascript de la data de docSnap y lo recorremos añadiendo
+        // al html la lista de películas favoritas
+        async function recogerUsuariosFb(usuario) {
+            if (usuario == null) {
+                userName = document.getElementById("inputNombre").value;
+            } else {
+                userName = usuario;
+            }
+            let espacio = document.getElementById("miSeleccion");
+            const Ref = doc(db, "Usuarios", `${userName}`);
+            const docSnap = await getDoc(Ref);
+            if (docSnap.exists()) {
+                console.log("Los datos del documento son:", docSnap.data());
+                favoritos = docSnap.data().Favoritos;
+                const res = docSnap.data().Favoritos;
+                let str = "";
+                for (let key in res) {
+                    console.log(res[key]);
+                    str += `<li id="${res[key].Título}"><button id="botonBorrar" onclick='event.preventDefault();borrarFavorito("${res[key].Título}");'>Borrar</button><button id="botonInfo"  onclick='event.preventDefault();detallesPeliculas("${res[key].Título}");'>Info</button><button id="botonVisto"  onclick='event.preventDefault(); marcarVisto("${res[key].Título}");'><i class="fa-solid fa-eye" style="color: #ffffff;"></i></button><a href=#>${res[key].Título}</a></li>`;
+
+                }
+                espacio.innerHTML += str;
+                // Cuando es la primera vez que ese usuario hace login, aparece este mensaje en consola
+            } else {
+                console.log("No se encontró ningún documento con ese ID.");
+            }
+        }
+        // Esta función se invoca al clickar en el button Login
+        async function guardarUsuario(usuario) {
+            // obtengo el nombre de usuario del input del nombre de usuario
+            userName = document.getElementById("inputNombre").value;
+            // referencia a la colección 'Usuarios'
+            const docRef = doc(db, "Usuarios", `${userName}`);
+            let espacio = document.getElementById("miSeleccion");
+            // se añade al array
+            usuarios.push(userName);
+            ultimoUsuario = usuarios[usuarios.length - 1];
+            // los guardo en localStorage para tener localizado al último 
+            localStorage.setItem("usuarios", JSON.stringify(usuarios));
+            localStorage.setItem("ultimoUsuario", JSON.stringify(usuarios[usuarios.length - 1]));
+            document.getElementById("login").innerHTML = `<br><label id="saludo">¡Hola ${userName}!  </label><i class="fa-solid fa-face-smile-beam" style="color: #000000;"></i><br><button id="cambiarUser" onclick="cambiarUsuario()">Cambiar usuario</button>`;
+            document.getElementById("buscarPeliculas").innerHTML = ` <div id="buscador"><input type="text" id="inputPeli" placeholder="Buscar película..."><button id="botonBuscar" onclick="info(${paginaActual})">Buscar</button></div>`;
+            document.getElementById("miSeleccion").innerHTML = `<h3 id="tituloSeleccion">MIS FAVORITOS</h3>`;
+            favoritos = [];
+            vistos = [];
+            if (localStorage.getItem(`vistos-${userName}`)) {
+                vistos = JSON.parse(localStorage.getItem(`vistos-${userName}`));
+            }
+            // Aquí hace exactamente lo mismo que en la función recogerUsuariosFb(), ya que queremos comprobar si el usuario introducido
+            // en el input existe ya en nuestra colección, en ese caso mostramos sus favoritos almacenados en firestore
+            const Ref = doc(db, "Usuarios", `${userName}`);
+            const docSnap = await getDoc(Ref);
+            if (docSnap.exists()) {
+                console.log("Los datos del documento son:", docSnap.data());
+                favoritos = docSnap.data().Favoritos;
+                const res = docSnap.data().Favoritos;
+                let str = "";
+                for (let key in res) {
+                    console.log(res[key]);
+                    str += `<li id="${res[key].Título}"><button id="botonBorrar" onclick='event.preventDefault();borrarFavorito("${res[key].Título}");'>Borrar</button><button id="botonInfo"  onclick='event.preventDefault();detallesPeliculas("${res[key].Título}");'>Info</button><button id="botonVisto"  onclick='event.preventDefault(); marcarVisto("${res[key].Título}");'><i class="fa-solid fa-eye" style="color: #ffffff;"></i></button><a href=#>${res[key].Título}</a></li>`;
+
+                }
+                espacio.innerHTML += str;
+            } else {
+                console.log("No se encontró ningún documento con ese ID.");
+            }
+            //Aquí creo un documento nuevo que será el usuario, en la colección de usuarios, con un campo Favoritos
+            await ponValor(docRef, {
+                Favoritos: favoritos
+            }
+            );
+        }
+        // Esta función se invoca al clickar en el botón Cambiar usuario
+        function cambiarUsuario() {
+            // El html cambia, desaparece el buscador de pelis y el apartado de favoritos y aparece el login
+            document.getElementById("login").innerHTML = `<h3 id="tituloLogin">LOGIN</h3>
+        <label>Usuario</label>
+        <input type="text" name="" id="inputNombre" placeholder="Nombre de usuario">
+        <br><br>
+        <label>Password</label>
+        <input type="text" id="" placeholder="No la validaremos">
+        <br>
+        <button id="botonLogin" onclick="guardarUsuario()">LOGIN</button>`;
+            document.getElementById("buscarPeliculas").innerHTML = ``;
+            document.getElementById("miSeleccion").innerHTML = ``;
+
+        }
+        // Esta función es invocada cuando introduces el nombre de una pelicula y pulsas el botón Buscar y cuando pulsas alguna
+        // de las flechas para cambiar de página, recibe como parámetro la página actual
+        async function info(pagina) {
+            paginaActual = pagina;
+            if (inputPeli.value != "") {
+                query = inputPeli.value;
+
+            }
+            //url de la API con el link de tmdb, la key, la query (el título introducido en el buscador) y la página actual
+            var api = `${url}?api_key=${key}&query=${query}&page=${paginaActual}`;
+            espacio = document.getElementById("buscarPeliculas");
+            espacio.innerHTML = `<div id="buscador"><input type="text" id="inputPeli" placeholder="Buscar película..."><button id="botonBuscar" onclick="info(${paginaActual})">Buscar</button></div><div id="botonesPags"></div>`;
+            // llamamos a la api
+            response = await fetch(api)
+            if (!response.ok)
+                throw new Error(`ERROR en fetch: ${response.status}`)
+            else {
+                // creamos un objeto json de la llamada a la api
+                const res = await response.json();
+                totalResults = res.total_results;
+                // hay 20 resultados por página, con total_pages se obtiene el número de páginas de nuestra query
+                totalPaginas = res.total_pages;
+                let str = "<ol>";
+                // itero sobre las propiedades de dicho objeto, y yo he decidido mostrar en una lista el título, fecha de lanzamiento
+                // e idioma original
+                for (let i in res.results) {
+                    if (typeof res.results[i] === "object") {
+                        str += `<li><details><summary><button id="like" onclick='event.preventDefault(); guardarFavorito("${res.results[i].title}");'><i class="fa-solid fa-heart" style="color: #f56eb3;"></i></button>${res.results[i].title}</summary>`;
+                        str += `<p><strong>Título original</strong>: ${res.results[i].original_title}</p>`;
+                        str += `<p><strong>Fecha de lanzamiento</strong>: ${res.results[i].release_date}</p>`;
+                        str += `<p><strong>Idioma original</strong>: ${res.results[i].original_language}</p>`;
+
+                        str += `</details></li> `;
+                    } else {
+                        str += `<li><a href='${res.results[i].url}' onclick='event.preventDefault(); info("${res.results[i].url}");'>${res.results[i].title}</a></li>`;
+                    }
+                }
+                str += "</ol>";
+                espacio.innerHTML += str;
+                // invocamos la función de los botones de paginación
+                mostrarBotonesPaginacion();
+            }
+
+        }
+        function mostrarBotonesPaginacion() {
+            const contenedorBotones = document.getElementById("botonesPags");
+            contenedorBotones.innerHTML = "";
+            // si hay más de 1 página, se crean dos botones y texto del número de página
+            if (totalPaginas > 1) {
+                let texto = document.createElement("p");
+                texto.innerHTML = `pág ${paginaActual}/${totalPaginas}`;
+                let resultados = document.createElement("p");
+                resultados.innerHTML = `${totalResults} resultados`;
+                const botonAnterior = document.createElement("button");
+                botonAnterior.innerHTML = `<i class="fa-solid fa-arrow-left" style="color: #000000;"></i>`;
+                // al hacer click en el botón de volver, se resta 1 a la páginaActual y llamamos a info() pasándole este nuevo parámetro
+                botonAnterior.addEventListener("click", () => {
+                    paginaActual--;
+                    info(paginaActual);
+
+                });
+                const botonSiguiente = document.createElement("button");
+                botonSiguiente.innerHTML = `<i class="fa-solid fa-arrow-right" style="color: #000000;"></i>`;
+                botonSiguiente.disabled = paginaActual === totalPaginas;
+                // al hacer click en el botón de siguiente, se suma 1 a la páginaActual y llamamos a info() pasándole este nuevo parámetro
+                botonSiguiente.addEventListener("click", () => {
+                    paginaActual++;
+                    info(paginaActual);
+
+                });
+                // Como quiero que cuando esté en la 1 página no aparezca el botón de volver y cuando esté en la última no aparezca
+                // el de siguiente, compruebo cuál es la página actual para añadir al div el botón correspondiente
+                if (paginaActual != 1) {
+                    contenedorBotones.appendChild(botonAnterior);
+                }
+                contenedorBotones.appendChild(texto);
+                if (paginaActual != totalPaginas) {
+
+                    contenedorBotones.appendChild(botonSiguiente);
+                }
+            }
+        }
+        // Esta función es invocada al pulsar en el botón like (corazón), recibe como parámetro el título de la película
+        async function guardarFavorito(param) {
+            // añado el objeto a mi array de favoritos
+            favoritos.push({ Título: (param), Visto: false });
+            // referencia a la colección y al usuario
+            docRef = doc(db, "Usuarios", `${userName}`);
+            // actualizo el campo Favoritos del firestore pasándole el array de favoritos
+            await actualizarValor(docRef, {
+                Favoritos: favoritos
+
+            });
+            let espacio = document.getElementById("miSeleccion");
+            let str = "";
+            // lista que incluye el título de la peli y 3 botones para: borrar, ver información, marcar como visto
+            str += `<li id="${param}"><button id="botonBorrar" onclick='event.preventDefault();borrarFavorito("${param}");'>Borrar</button><button id="botonInfo"  onclick='event.preventDefault();detallesPeliculas("${param}");'>Info</button><button id="botonVisto"  onclick='event.preventDefault(); marcarVisto("${param}");'><i class="fa-solid fa-eye" style="color: #ffffff;"></i></button><a href=#>${param}</a></li>`;
+            // añado la lista al <div> con mis favoritos
+            espacio.innerHTML += str;
+            console.log(`${res.results[0].title}`);
+            //  }
+        }
+        // esta función es invocada en el botón Borrar, recibe como parámetro el título de la película
+        async function borrarFavorito(param) {
+            const elementoAEliminar = document.getElementById(param);
+            // Elimina el elemento del <div>
+            elementoAEliminar.parentNode.removeChild(elementoAEliminar);
+            // se elimina del array el elemento con el título del parámetro
+            const indiceAEliminar = favoritos.findIndex(objeto => objeto.Título === param);
+            favoritos.splice(indiceAEliminar, 1);
+            docRef = doc(db, "Usuarios", `${userName}`);
+            // actualizamos el campo Favoritos del usuario en firestore
+            await actualizarValor(docRef, {
+                Favoritos: favoritos
+
+            });
+
+        }
+        // esta función es invocada en el botón visto(el ojo), recibe como parámetro el título de la película
+        async function marcarVisto(param) {
+            // si el usuario ya tenía películas guardadas en en array en localStorage, se recogen para no perderlas
+            if (localStorage.getItem(`vistos-${userName}`)) {
+                vistos = JSON.parse(localStorage.getItem(`vistos-${userName}`));
+            }
+            // se añade al array de vistos
+            vistos.push(param);
+            // se almacena en localStorage
+            localStorage.setItem(`vistos-${userName}`, JSON.stringify(vistos));
+            // salta una alerta con la que puedes ver tu lista de películas vistas
+            Swal.fire({
+                title: `¡Has marcado ${param} como visto!`,
+                text: "¿Quieres ver tu lista de películas vistas?",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: "Sí",
+                cancelButtonText: "No",
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire(
+                        'Películas vistas:',
+                        `<br>${vistos}`,
+                    )
+                }
+            })
+        }
+        // esta función es invocada en el botón Info, recibe como parámetro el título de la película
+        async function detallesPeliculas(titulo) {
+            informacion = document.getElementById("informacion");
+            // primero se comprueba si en el <div> ya hay información de otra película, para en tal caso borrarla y que aparezca la de la nueva
+            if (document.getElementById("informacion") != null) {
+                informacion.parentNode.removeChild(informacion);
+            }
+            var api = `${url}?api_key=${key}&query=${titulo}`;
+            espacio = document.getElementById("miSeleccion");
+            // llamamos a la api
+            response = await fetch(api)
+            if (!response.ok)
+                throw new Error(`ERROR en fetch: ${response.status}`)
+            else {
+                // se crea un objeto json
+                const res = await response.json();
+                // de ese objeto he añadido la información que me ha parecido relevante: título original, imagen cartel, fecha de lanzamiento
+                // sinopsis, idioma original, popularidad y puntuación
+                let str = "";
+                str += `<div id="informacion"><div id="cerrarInfo"><button onclick="borrarDetalles()"><i class="fa-solid fa-x" style="color: #f73d93;"></i></button><h2>${res.results[0].title}</h2></div>`;
+                str += `<img src="https://image.tmdb.org/t/p/w200${res.results[0].poster_path}">`;
+                str += `<h4>Fecha de lanzamiento: </h4><p> ${res.results[0].release_date}</p>`;
+                str += `<h4>Sinopsis: </h4><p>${res.results[0].overview}</p>`;
+                str += `<h4>Idioma original: </h4><p>${res.results[0].original_language}</p>`;
+                str += `<h4>Popularidad: </h4><p> ${res.results[0].popularity}</p>`;
+                str += `<h4>Puntuación: </h4><p>${res.results[0].vote_average}</p>`;
+                str += `</div>`;
+                espacio.innerHTML += str;
+            }
+        }
+        function borrarDetalles() {
+            // esta función simplemente vacía el <div> que tiene la información al pulsar el botón de la X
+            informacion = document.getElementById("informacion");
+            if (document.getElementById("informacion") != null) {
+
+                informacion.parentNode.removeChild(informacion);
+            }
+        }
+    </script>
+    <script>
+        document.getElementById('descargarBtn').addEventListener('click', function () {
+            // Crear un enlace de descarga
+            var downloadLink = document.createElement('a');
+            downloadLink.href = 'Docpelis.pdf';
+            downloadLink.download = 'Docpelis.pdf';
+            downloadLink.target = '_blank';
+
+            // Simular un clic en el enlace de descarga
+            downloadLink.click();
+        });
+    </script>
+
+
+</body>
+
+</html>
