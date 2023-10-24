@@ -1,1 +1,1 @@
-# Pel-culas
+# Peliculas
